@@ -1,0 +1,122 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(rpart)
+library(ranger)
+library(caret)
+set.seed(63212)
+```
+
+```{r}
+MCL = read_csv("MCL2.csv")
+MCL$success = case_match(MCL$success, 1 ~ TRUE, 2 ~ FALSE)
+MCL$jrofficer = case_match(MCL$jrofficer, c(0,NA) ~ 0, 1 ~ 1)
+MCL = MCL %>% filter(is.na(coder) == FALSE)
+MCL = MCL %>% filter(is.na(staged) == TRUE)
+MCL2 = MCL
+MCL2$success = as.factor(MCL2$success)
+```
+
+```{r}
+table(MCL2$type)
+```
+
+```{r}
+mcl3 = MCL2 %>% select(nonmilcoup, srofficial, jrofficer, sameeth, anyethclaim, relative, anyoutsidesupport)
+Covmat = round(cor(mcl3), 2)
+Covmat
+```
+
+
+
+```{r}
+n <- nrow(MCL2)
+train_index <- sample(1:n, round(0.7*n))
+MCL2_train <- MCL2[train_index, ]
+MCL2_test <- MCL2[-train_index, ]
+```
+
+```{r}
+glm1 = glm(success ~ type2 + nonmilcoup + srofficial + jrofficer + sameeth + anyethclaim + relative + anyoutsidesupport, data = MCL2_train, family = "binomial")
+summary(glm1)
+```
+
+
+```{r}
+glm2 = step(glm1)
+summary(glm2)
+```
+
+
+
+```{r}
+preds0= predict(glm2, newdata = MCL2_test, type = "response")
+preds0 = ifelse(preds0 > 0.5, 1, 0)
+cmglm = table(predicted = preds0, actual = MCL2_test$success)
+addmargins(cmglm)
+sum(diag(cmglm))/nrow(MCL2_test)
+```
+
+```{r}
+glm3 = train(success ~ type2 + nonmilcoup + srofficial + jrofficer + anyethclaim + anyoutsidesupport,
+  data = MCL2,
+  trControl = trainControl(method = "cv", number = 10),
+  method = "glm",
+  family = "binomial",
+)
+glm3
+```
+
+
+```{r}
+t1 <- rpart(success ~ type2 + nonmilcoup + srofficial + jrofficer + sameeth + anyethclaim + relative + anyoutsidesupport,
+data = MCL2_train, method = "class")
+par(cex=0.7, xpd=NA)
+plot(t1)
+text(t1, use.n = TRUE)
+```
+
+```{r}
+preds1= predict(t1, newdata = MCL2_test, type = "class")
+cmtree = table(predicted = preds1, actual = MCL2_test$success)
+addmargins(cmtree)
+sum(diag(cmtree))/nrow(MCL2_test)
+```
+
+```{r}
+rf1 <- ranger(success ~ type2 + nonmilcoup + srofficial + jrofficer + sameeth + anyethclaim + relative + anyoutsidesupport, data = MCL2_train,
+num.trees = 500,
+classification = TRUE)
+```
+
+```{r}
+predrf = predict(rf1, data = MCL2_test)
+predsvect = predrf$predictions
+cmrf = table(predicted = predsvect, actual = MCL2_test$success)
+addmargins(cmrf)
+sum(diag(cmrf))/nrow(MCL2_test)
+```
+
+```{r}
+testBFCoup = data.frame(nonmilcoup = 0, success = TRUE, type2 = "CH", srofficial = 0, jrofficer = 1, sameeth = 1, anyethclaim = 0, relative = 0, anyoutsidesupport = 0)
+predict(glm2, newdata = testBFCoup, type = "response")
+predict(t1, newdata = testBFCoup, type = "class")
+predBF = predict(rf1, data = testBFCoup, type = "response", predict.all = TRUE)
+table(predBF$predictions)
+```
+
+
+```{r}
+glmtest = glm(success ~ type2 + nonmilcoup + srofficial + jrofficer + sameeth + anyethclaim + relative + anyoutsidesupport, data = MCL2, family = "binomial")
+summary(glmtest)
+```
+
+```{r}
+glmtest2 = step(glmtest)
+summary(glmtest2)
+```
+
